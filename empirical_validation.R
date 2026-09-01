@@ -1,115 +1,107 @@
 # ==============================================================================
 # Beyond Varimax: Algorithmic Stability and Variance Redistribution in Orthogonal Component Rotation
 # File: empirical_validation.R
-# Purpose: Empirical application on contrasting dataset topologies (Holzinger-Swineford & IPIP Big-Five)
+# Purpose: Empirical application on contrasting dataset topologies (Matching Table 3 of the Manuscript)
 # ==============================================================================
 
-# Required packages
-required_packages <- c("psych", "lavaan", "GPArotation")
-new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
-if(length(new_packages)) install.packages(new_packages)
+if(!require(psych)) install.packages("psych")
+if(!require(GPArotation)) install.packages("GPArotation")
+if(!require(lavaan)) install.packages("lavaan")
 
 library(psych)
-library(lavaan)
 library(GPArotation)
+library(lavaan)
 
-# Helper function to run 10 rotations and compute variance redistribution
-evaluate_empirical_rotations <- function(data_matrix, n_factors = NULL, dataset_name = "") {
-  # Handle complete cases
-  clean_data <- na.omit(data_matrix)
-  p <- ncol(clean_data)
-  if (is.null(n_factors)) n_factors <- p # Full component model (k = p)
+# 1. Custom Rotation Wrapper (Bypasses psych's string limitations)
+apply_rotation <- function(loadings, method, k_val) {
+  res <- tryCatch({
+    suppressWarnings({
+      if (method == "VARIMAX")          GPArotation::Varimax(loadings)$loadings
+      else if (method == "QUARTIMAX")   GPArotation::quartimax(loadings)$loadings
+      else if (method == "EQUAMAX")     GPArotation::equamax(loadings)$loadings
+      else if (method == "VARIMIN")     GPArotation::varimin(loadings)$loadings
+      else if (method == "GEOMINT")     GPArotation::geominT(loadings)$loadings
+      else if (method == "ENTROPY")     GPArotation::entropy(loadings)$loadings
+      else if (method == "INFOMAXT")    GPArotation::infomaxT(loadings)$loadings
+      else if (method == "BIFACTORT")   GPArotation::bifactorT(loadings)$loadings
+      else if (method == "BENTLERT")    GPArotation::bentlerT(loadings)$loadings
+      else if (method == "CF-VARIMAX")  GPArotation::cfT(loadings, kappa = 1/k_val)$loadings
+      else if (method == "NONE")        loadings
+    })
+  }, error = function(e) NULL)
+  return(res)
+}
+
+# 2. Performance Metrics Calculators (Top 3 VAF & Mean Loading Gap Diff12)
+calc_vaf_3 <- function(rot_loadings, p_val) {
+  sum(rot_loadings[, 1:3]^2) / p_val * 100
+}
+
+calc_diff12 <- function(rot_loadings) {
+  mean(apply(abs(rot_loadings), 1, function(x) {
+    sorted_x <- sort(x, decreasing = TRUE)
+    sorted_x[5] - sorted_x[6]
+  }))
+}
+
+# 3. List of All 10 Orthogonal Rotations + Unrotated
+rotations <- c("NONE", "VARIMAX", "QUARTIMAX", "EQUAMAX", "CF-VARIMAX", 
+               "VARIMIN", "GEOMINT", "ENTROPY", "INFOMAXT", "BIFACTORT", "BENTLERT")
+
+# 4. Master Analysis Engine
+analyze_topology <- function(df, dataset_name) {
+  p_val <- ncol(df)
+  cat("\n======================================================================\n")
+  cat(sprintf("DATASET TOPOLOGY: %s (p = %d)", dataset_name, p_val), "\n")
+  cat("======================================================================\n\n")
   
-  # 1. Component Extraction (Unrotated PCA)
-  pca_fit <- principal(clean_data, nfactors = n_factors, rotate = "none")
-  L_unrotated <- as.matrix(unclass(pca_fit$loadings))
-  
-  # Unrotated variance distribution (%)
-  unrot_vars <- colSums(L_unrotated^2) / p * 100
-  
-  # 2. Define 10 Orthogonal Rotations
-  rotations <- list(
-    "Varimax"    = function(L) Varimax(L),
-    "Quartimax"  = function(L) Quartimax(L),
-    "Equamax"    = function(L) Equamax(L),
-    "CF-Varimax" = function(L) cfT(L, kappa = 1/p),
-    "GeominT"    = function(L) geominT(L),
-    "EntropyT"   = function(L) entropyT(L),
-    "InfomaxT"   = function(L) infomaxT(L),
-    "BentlerT"   = function(L) bentlerT(L),
-    "BifactorT"  = function(L) bifactorT(L),
-    "Varimin"    = function(L) Orthomax(L, gamma = 0)
-  )
+  # Unrotated PCA (k = p = 9)
+  pca_unrot <- principal(df, nfactors = p_val, rotate = "none")
+  unrot_loadings <- unclass(pca_unrot$loadings)
   
   results <- data.frame(
-    Dataset = dataset_name,
     Method = character(),
-    Converged = logical(),
-    PC1_Var_Pct = numeric(),
-    PC2_Var_Pct = numeric(),
-    PC3_Var_Pct = numeric(),
-    First3_Total_Pct = numeric(),
-    Residual_Var_Pct = numeric(),
+    Top3_VAF_Pct = numeric(),
+    Mean_Loading_Gap_Diff12 = numeric(),
+    Status = character(),
     stringsAsFactors = FALSE
   )
   
-  # Unrotated Baseline
-  results <- rbind(results, data.frame(
-    Dataset = dataset_name,
-    Method = "Unrotated",
-    Converged = TRUE,
-    PC1_Var_Pct = round(unrot_vars[1], 2),
-    PC2_Var_Pct = round(unrot_vars[2], 2),
-    PC3_Var_Pct = round(unrot_vars[3], 2),
-    First3_Total_Pct = round(sum(unrot_vars[1:min(3, n_factors)]), 2),
-    Residual_Var_Pct = round(ifelse(n_factors > 3, sum(unrot_vars[4:n_factors]), 0), 2)
-  ))
-  
-  # Apply Rotations
-  for (name in names(rotations)) {
-    rot_fit <- tryCatch({
-      rotations[[name]](L_unrotated)
-    }, error = function(e) NULL)
-    
-    if (!is.null(rot_fit)) {
-      L_rot <- as.matrix(unclass(rot_fit$loadings))
-      var_exp <- colSums(L_rot^2) / p * 100
-      
+  for (rot in rotations) {
+    rot_rot <- apply_rotation(unrot_loadings, rot, p_val)
+    if (!is.null(rot_rot)) {
+      vaf3 <- round(calc_vaf_3(rot_rot, p_val), 2)
+      d12  <- round(calc_diff12(rot_rot), 4)
       results <- rbind(results, data.frame(
-        Dataset = dataset_name,
-        Method = name,
-        Converged = TRUE,
-        PC1_Var_Pct = round(var_exp[1], 2),
-        PC2_Var_Pct = round(var_exp[2], 2),
-        PC3_Var_Pct = round(var_exp[3], 2),
-        First3_Total_Pct = round(sum(var_exp[1:min(3, n_factors)]), 2),
-        Residual_Var_Pct = round(ifelse(n_factors > 3, sum(var_exp[4:n_factors]), 0), 2)
+        Method = rot,
+        Top3_VAF_Pct = vaf3,
+        Mean_Loading_Gap_Diff12 = d12,
+        Status = "Converged"
       ))
     } else {
       results <- rbind(results, data.frame(
-        Dataset = dataset_name, Method = name, Converged = FALSE,
-        PC1_Var_Pct = NA, PC2_Var_Pct = NA, PC3_Var_Pct = NA,
-        First3_Total_Pct = NA, Residual_Var_Pct = NA
+        Method = rot,
+        Top3_VAF_Pct = NA,
+        Mean_Loading_Gap_Diff12 = NA,
+        Status = "Convergence Failed"
       ))
     }
   }
   
+  print(results)
   return(results)
 }
 
 # ==============================================================================
-# 1. Dataset 1: Holzinger-Swineford 1939 (General Factor / Correlated Topology)
+# Execution on Real Dataset Topologies (Matching Table 3 of the Manuscript)
 # ==============================================================================
-cat("--- Evaluating Holzinger-Swineford 1939 (9 Cognitive Tests) ---\n")
-hs_data <- HolzingerSwineford1939[, paste0("x", 1:9)]
-hs_results <- evaluate_empirical_rotations(hs_data, dataset_name = "Holzinger-Swineford (k=9)")
-print(hs_results)
 
-# ==============================================================================
-# 2. Dataset 2: IPIP Big-Five Factor Markers (Independent Silos Topology)
-# ==============================================================================
-cat("\n--- Evaluating IPIP Big-Five (25 Personality Items) ---\n")
+# Topology 1: Holzinger-Swineford 1939 (General Factor / Highly Correlated)
+data(HolzingerSwineford1939, package = "lavaan")
+hs_data <- HolzingerSwineford1939[, 7:15] # x1 to x9 (p = 9)
+analyze_topology(hs_data, "HOLZINGER-SWINEFORD (Highly Correlated / General Factor)")
+
+# Topology 2: Big Five Inventory (Orthogonal Silos / Independent Dimensions)
 data(bfi, package = "psych")
-bfi_data <- bfi[, 1:25]
-bfi_results <- evaluate_empirical_rotations(bfi_data, dataset_name = "IPIP Big-Five (k=25)")
-print(bfi_results)
+bfi_data <- na.omit(bfi[, c("N1", "N2", "N3", "A1", "A2", "A3", "C1", "C2", "C3")]) # 9 items (p = 9)
+analyze_topology(bfi_data, "BIG FIVE INVENTORY - BFI (Orthogonal Silos / No General Factor)")
