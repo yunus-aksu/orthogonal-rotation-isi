@@ -182,7 +182,7 @@ cat("Saved 'table_2.csv' to './output/' directory.\n")
 ### ==============================================================================
 cat("\n--- PART 3: Replicating Table 3 (Empirical Data Validation) ---\n")
 
-# Custom Rotation Wrapper (Bypasses psych's package limits)
+# Custom Rotation Wrapper
 apply_rotation <- function(loadings, method, k_val) {
   res <- tryCatch({
     suppressWarnings({
@@ -202,7 +202,7 @@ apply_rotation <- function(loadings, method, k_val) {
   return(res)
 }
 
-# Performance Metrics Calculators (k = p Tam Bileşen Modeli)
+# Performance Metrics Calculators (k = p full component model)
 calc_vaf_3 <- function(rot_loadings, p_val) {
   if (is.null(rot_loadings)) return(NA_real_)
   sum(rot_loadings[, 1:3]^2) / p_val * 100
@@ -313,4 +313,4 @@ ggsave(file.path(output_dir, "figure_1.png"), plot = fig1_plot, width = 7, heigh
 ggsave(file.path(output_dir, "figure_1.pdf"), plot = fig1_plot, width = 7, height = 5.5, device = "pdf")
 cat("Saved 'figure_1.png' and 'figure_1.pdf' to './output/' directory.\n")
 
-cat("\nDone! All tables and figures reproduced and saved successfully in seconds.\n")
+cat("\nDone! All tables and figures reproduced and saved successfully.\n")
