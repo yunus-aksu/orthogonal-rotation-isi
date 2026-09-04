@@ -1,0 +1,12 @@
+"Rotation_Method","Mean_Loading_Gap","SD_Loading_Gap","Mean_SSI_Score","SD_SSI_Score"
+"Unrotated",0.26,0.185,0.172,0.312
+"Varimax",0.726,0.235,0.799,0.258
+"Quartimax",0.683,0.285,0.613,0.361
+"Equamax",0.723,0.248,0.81,0.278
+"CF-Varimax",0.716,0.242,0.769,0.284
+"Varimin",0.221,0.244,0.399,0.449
+"GeominT",0.463,0.29,0.254,0.327
+"Entropy",0.614,0.321,0.463,0.405
+"InfomaxT",0.644,0.318,0.562,0.416
+"BifactorT",0.549,0.327,0.366,0.379
+"BentlerT",0.587,0.184,0.646,0.405
